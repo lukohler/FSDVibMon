@@ -119,8 +119,8 @@ def main():
     ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft("reference.wav")
 
     window_size = 17  # Choose Size
-    smoothed_magnitude_db = moving_average(positive_magnitude_db, window_size)
-    smoothed_ref_magnitude_db = moving_average(ref_positive_magnitude_db, window_size)
+    smoothed_frequencies, smoothed_magnitude_db = moving_average(positive_frequencies, positive_magnitude_db, window_size)
+    smoothed_ref_frequencies, smoothed_ref_magnitude_db = moving_average(ref_positive_frequencies, ref_positive_magnitude_db, window_size)
 
     # Plot the FFT result
     plt.figure(figsize=(10, 6))
@@ -139,6 +139,7 @@ def main():
 
     plt.figure(figsize=(10, 6))
     plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
     plt.title("Frequency Spectrum")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("DB")
