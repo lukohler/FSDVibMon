@@ -4,6 +4,16 @@ import pyaudio
 import numpy as np
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
+from datetime import datetime
+from datetime import date 
+
+today = date.today()
+current_date = today.strftime("%y%m%d")
+#print("Current date =", current_date)
+
+now = datetime.now()
+current_time = now.strftime("%H%M%S")
+#print("Current Time =", current_time)
 
 #Setup
 FORMAT = pyaudio.paInt16  # 16-bit resolution
@@ -11,7 +21,9 @@ CHANNELS = 1              # Choose number of Channels, 1 = mono, 2 seperate ones
 RATE = 44100              # 44.1kHz sampling rate
 CHUNK = 1024              # 2^10 samples for buffer size
 RECORD_SECONDS = 0.1        # Recordduration
-OUTPUT_FILENAME = "recording.wav"  # File name to save
+OUTPUT_FILENAME = f"recording_{current_date}_{current_time}.wav" # File name to save
+
+
 
 
 # Initialize PyAudio
@@ -47,20 +59,23 @@ def Audio_fft(wav_file):
     sample_rate, audio_data = wavfile.read(wav_file)
 
     # Perform FFT (Fast Fourier Transform)
-    fft_data = np.fft.fft(audio_data)
+    fft_data = np.fft.rfft(audio_data)
     fft_magnitude = np.abs(fft_data)  # Get the magnitude of the FFT
 
     # Frequency axis (x-axis)
-    frequencies = np.fft.fftfreq(len(fft_magnitude), 1.0 / sample_rate)
-
-    # Only keep the positive frequencies and corresponding magnitude
-    positive_frequencies = frequencies[:len(frequencies) // 2]
-    positive_magnitude = fft_magnitude[:len(frequencies) // 2]
+    positive_frequencies = np.fft.rfftfreq(len(audio_data), 1.0 / sample_rate)
 
     # Convert magnitude to dB (adding a small constant to avoid log(0))
-    positive_magnitude_db = 20 * np.log10(positive_magnitude + 1e-10)
+    positive_magnitude_db = 20 * np.log10(fft_magnitude + 1e-10)
 
     return positive_frequencies, positive_magnitude_db
+
+def moving_average(xdata, ydata, window_size):
+    
+    smoothed_ydata = np.convolve(ydata, np.ones(window_size) / window_size, mode='valid')
+    smoothed_xdata = xdata[(window_size - 1) // 2 : -(window_size - 1) // 2]
+
+    return smoothed_xdata, smoothed_ydata
 
 def record_sample(device_index):
     # Start Recording
@@ -103,10 +118,16 @@ def main():
 
     ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft("reference.wav")
 
+    window_size = 17  # Choose Size
+    smoothed_magnitude_db = moving_average(positive_magnitude_db, window_size)
+    smoothed_ref_magnitude_db = moving_average(ref_positive_magnitude_db, window_size)
+
     # Plot the FFT result
     plt.figure(figsize=(10, 6))
     plt.plot(positive_frequencies, positive_magnitude_db, label="rec")
     plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="ref")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+    plt.plot(smoothed_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
     plt.title("Frequency Spectrum")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("DB")
@@ -117,7 +138,7 @@ def main():
     #plt.show()
 
     plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="rec")
+    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
     plt.title("Frequency Spectrum")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("DB")
