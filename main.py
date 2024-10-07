@@ -6,6 +6,7 @@ from scipy.io import wavfile
 import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import date 
+import os
 
 today = date.today()
 current_date = today.strftime("%y%m%d")
@@ -20,9 +21,9 @@ FORMAT = pyaudio.paInt16  # 16-bit resolution
 CHANNELS = 1              # Choose number of Channels, 1 = mono, 2 seperate ones?
 RATE = 44100              # 44.1kHz sampling rate
 CHUNK = 1024              # 2^10 samples for buffer size
-RECORD_SECONDS = 0.1        # Recordduration
-OUTPUT_FILENAME = f"recording_{current_date}_{current_time}.wav" # File name to save
-
+RECORD_SECONDS = 0.4      # Recordduration
+OUTPUT_FILENAME = f"Recording_{current_date}_{current_time}.wav" # File name to save
+REFERENCE_FILENAME = "reference.wav"
 
 
 
@@ -83,8 +84,9 @@ def record_sample(device_index):
     print("Recording...")
 
     audio_frames = []
+    total_frames = int(RATE / CHUNK * RECORD_SECONDS)
 
-    for _ in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+    for _ in range(total_frames):
         data = stream.read(CHUNK)
         audio_frames.append(data)
 
@@ -103,6 +105,7 @@ def record_sample(device_index):
     wavefile.writeframes(b''.join(audio_frames))
     wavefile.close()
 
+
 def main():
     # Get the device index for the target interface
     device_index = get_device_index_by_name(SelectedInterface)
@@ -114,13 +117,17 @@ def main():
 
     record_sample(device_index)
     print("Recording finished")
+          
     positive_frequencies, positive_magnitude_db = Audio_fft(OUTPUT_FILENAME)
 
-    ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft("reference.wav")
+
+
+    ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft(REFERENCE_FILENAME)
 
     window_size = 17  # Choose Size
     smoothed_frequencies, smoothed_magnitude_db = moving_average(positive_frequencies, positive_magnitude_db, window_size)
     smoothed_ref_frequencies, smoothed_ref_magnitude_db = moving_average(ref_positive_frequencies, ref_positive_magnitude_db, window_size)
+
 
     # Plot the FFT result
     plt.figure(figsize=(10, 6))
@@ -133,8 +140,22 @@ def main():
     plt.ylabel("DB")
     plt.legend()
     plt.grid()
-    plt.xlim(0, RATE/2)  # Limit x-axis to Nyquist frequency
-    plt.savefig('spectrum')
+    plt.xlim(0, 1000) 
+    plt.savefig('Spectrum (-1000) & Reference')
+    #plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db, label="rec")
+    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="ref")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+    plt.plot(smoothed_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+    plt.title("Frequency Spectrum")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 200)  
+    plt.savefig('Spectrum (-200) & Reference')
     #plt.show()
 
     plt.figure(figsize=(10, 6))
@@ -145,9 +166,22 @@ def main():
     plt.ylabel("DB")
     plt.legend()
     plt.grid()
-    plt.xlim(0, RATE/2)  # Limit x-axis to Nyquist frequency
-    plt.savefig('spectrum_diff')
+    plt.xlim(0, 1000)  
+    plt.savefig('Spectrum(-1000_diff')
     plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
+    plt.title("Frequency Spectrum")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 200)  
+    plt.savefig('Spectrum(-200_diff')
+    plt.show()
+
 
 if __name__ == "__main__":
     main()
