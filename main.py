@@ -1,4 +1,3 @@
-
 import wave
 import pyaudio
 import numpy as np
@@ -7,6 +6,9 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from datetime import date 
 import os
+import argparse
+import sys
+import time
 
 today = date.today()
 current_date = today.strftime("%y%m%d")
@@ -21,17 +23,14 @@ FORMAT = pyaudio.paInt16  # 16-bit resolution
 CHANNELS = 1              # Choose number of Channels, 1 = mono, 2 seperate ones?
 RATE = 44100              # 44.1kHz sampling rate
 CHUNK = 1024              # 2^10 samples for buffer size
-RECORD_SECONDS = 0.4      # Recordduration
-OUTPUT_FILENAME = f"Recording_{current_date}_{current_time}.wav" # File name to save
 REFERENCE_FILENAME = "reference.wav"
-
-
 
 # Initialize PyAudio
 audio = pyaudio.PyAudio()
 
 # Specify the name of the desired audio interface
-SelectedInterface = 'USB Audio CODEC '  # 
+#SelectedInterface = 'USB Audio CODEC '  
+SelectedInterface = 'MacBook Pro-Mikrofon'
 
 def get_device_index_by_name(device_name):
     p = pyaudio.PyAudio()
@@ -75,13 +74,12 @@ def moving_average(xdata, ydata, window_size):
     
     smoothed_ydata = np.convolve(ydata, np.ones(window_size) / window_size, mode='valid')
     smoothed_xdata = xdata[(window_size - 1) // 2 : -(window_size - 1) // 2]
-
     return smoothed_xdata, smoothed_ydata
 
-def record_sample(device_index):
+def record_sample(device_index, RECORD_SECONDS, OUTPUT_FILENAME):
     # Start Recording
     stream = audio.open(format=FORMAT, input_device_index = device_index, channels=CHANNELS, rate=RATE, input=True, frames_per_buffer=CHUNK)
-    print("Recording...")
+    print(f"Recording for {RECORD_SECONDS} seconds")
 
     audio_frames = []
     total_frames = int(RATE / CHUNK * RECORD_SECONDS)
@@ -95,7 +93,7 @@ def record_sample(device_index):
     # Stop Recording
     stream.stop_stream()
     stream.close()
-    audio.terminate()
+    
 
     # Save the recording as a WAV file
     wavefile = wave.open(OUTPUT_FILENAME, 'wb')
@@ -105,8 +103,123 @@ def record_sample(device_index):
     wavefile.writeframes(b''.join(audio_frames))
     wavefile.close()
 
+    return b''.join(audio_frames)  # Return recording in bytes
+
+def split_audio(audio_data, sample_width, num_channels, part_duration, rate, base_filename):
+    part_length = int(rate * part_duration * num_channels * sample_width)  # Number of bytes / part
+    num_parts = len(audio_data) // part_length
+
+    for i in range(num_parts):
+        part_data = audio_data[i * part_length: (i + 1) * part_length]
+        part_filename = f"{base_filename}_part_{i + 1}.wav"
+
+        # Save each part as a separate WAV file
+        part_wavefile = wave.open(part_filename, 'wb')
+        part_wavefile.setnchannels(num_channels)
+        part_wavefile.setsampwidth(sample_width)
+        part_wavefile.setframerate(rate)
+        part_wavefile.writeframes(part_data)
+        part_wavefile.close()
+
+        print(f"Saved part {i + 1} as {part_filename}")
+
+def plot_fft_comparison(recorded_filename, reference_filename, window_size=17):
+
+    #recorded
+    positive_frequencies, positive_magnitude_db = Audio_fft(recorded_filename)
+    ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft(reference_filename)
+
+    # Smoothed
+    window_size = 17
+    smoothed_frequencies, smoothed_magnitude_db = moving_average(positive_frequencies, positive_magnitude_db, window_size)
+    smoothed_ref_frequencies, smoothed_ref_magnitude_db = moving_average(ref_positive_frequencies, ref_positive_magnitude_db, window_size)
+
+    #Plot1 whole spectrum
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+    plt.title("Entire Frequency Spectrum (-20 khz)")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 20000)
+    plt.savefig(f"EntireSpectrum_{current_date}_{current_time}.png")
+    plt.show()
+
+    #Plot2 Spectrum (-1000)
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+    plt.title("Frequency Spectrum (-1 khz) ")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 1000)
+    plt.savefig(f"Spectrum1000_{current_date}_{current_time}.png")
+    plt.show()
+
+     #Plot3 Spectrum (-200)
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+    plt.title("Frequency Spectrum (-200hz) ")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 200)
+    plt.savefig(f"Spectrum200_{current_date}_{current_time}.png")
+    plt.show()
+
+    #Plot4 Difference (-1000)
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
+    plt.title("Frequency Difference recorded - reference (-1000hz)")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 1000)  
+    plt.savefig('Difference(-1000).png')
+    plt.show()
+
+    #Plot5 Difference (-200)
+    plt.figure(figsize=(10, 6))
+    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
+    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
+    plt.title("Frequency Difference recorded - reference (-200hz)")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("DB")
+    plt.legend()
+    plt.grid()
+    plt.xlim(0, 200)  
+    plt.savefig('Difference(-200).png')
+    plt.show()
+    
 
 def main():
+
+    parser = argparse.ArgumentParser(description="Choose Recording-Type")
+    parser.add_argument('--duration', type=float, required= True, help="Specify duration of record in sec.")
+    parser.add_argument('--split', action='store_true', help="If set, recording will be split into 0.5sec-parts")
+    parser.add_argument('--continuous', action='store_true', help="If set, record in intervals for long durations.")
+    parser.add_argument('--total_time', type=float, required='--continuous' in sys.argv, help="Total time to record in hours.")
+    parser.add_argument('--interval', type=float, required='--continuous' in sys.argv, help="Intervals between recordings in minutes.")
+    args = parser.parse_args()
+
+    now = datetime.now()
+    current_date = now.strftime("%Y%m%d")
+    current_time = now.strftime("%H%M%S")
+
     # Get the device index for the target interface
     device_index = get_device_index_by_name(SelectedInterface)
 
@@ -115,73 +228,63 @@ def main():
     else:
         print(f"Using device: {SelectedInterface} (ID: {device_index})")
 
-    record_sample(device_index)
-    print("Recording finished")
-          
-    positive_frequencies, positive_magnitude_db = Audio_fft(OUTPUT_FILENAME)
+
+        if args.continuous:
+            total_time_in_seconds = args.total_time * 3600
+            interval_in_seconds = args.interval * 60
+            start_time = time.time()
+            elapsed_time = 0
+
+            folder_name = f"Continuousrecording_{current_date}_{current_time}"
+            os.makedirs(folder_name, exist_ok=True)
+
+            while elapsed_time < total_time_in_seconds:
+                start_record_time = time.time()
+                OUTPUT_FILENAME = f"{folder_name}/Recording_{args.duration}s_{current_date}_{current_time}.wav"
+
+                audio_data = record_sample(device_index, args.duration, OUTPUT_FILENAME)
+
+                if args.split:
+                    sample_width = audio.get_sample_size(FORMAT)
+                    split_audio(audio_data, sample_width, CHANNELS, 0.5, RATE, OUTPUT_FILENAME)
+
+                elapsed_time = time.time() - start_time
+                if elapsed_time < total_time_in_seconds:
+                    recording_duration = time.time() - start_record_time
+                    wait_time = interval_in_seconds - recording_duration
+                    if wait_time >0:
+                        print(f"Waiting for {args.interval} minutes before next recording.")
+                        time.sleep(wait_time)
+
+        else: 
+            RECORD_SECONDS = args.duration
+            OUTPUT_FILENAME = f"Recording_{RECORD_SECONDS}s_{current_date}_{current_time}.wav"
+            audio_data = record_sample(device_index, RECORD_SECONDS, OUTPUT_FILENAME)
+            print("Recording finished")
+
+    if args.split:
+            OUTPUT_DIR = F"Splits_{current_date}_{current_time}"
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
+            print(f"Splitting the {RECORD_SECONDS}s Recording into 0.5s parts")
+            sample_width = audio.get_sample_size(FORMAT)
+            num_channels = CHANNELS
+            split_audio(audio_data, sample_width, num_channels, 0.5, RATE, f"{OUTPUT_DIR}/Recording_{current_date}_{current_time}")
+
+
+    if os.path.exists(REFERENCE_FILENAME): 
+        print(f"Comparing recording with reference file: {REFERENCE_FILENAME}")
+        plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME)
+    else:
+        print(f"Reference file {REFERENCE_FILENAME} not found. Skipping comparison.")
 
 
 
-    ref_positive_frequencies, ref_positive_magnitude_db = Audio_fft(REFERENCE_FILENAME)
-
-    window_size = 17  # Choose Size
-    smoothed_frequencies, smoothed_magnitude_db = moving_average(positive_frequencies, positive_magnitude_db, window_size)
-    smoothed_ref_frequencies, smoothed_ref_magnitude_db = moving_average(ref_positive_frequencies, ref_positive_magnitude_db, window_size)
-
-
-    # Plot the FFT result
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db, label="rec")
-    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="ref")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
-    plt.plot(smoothed_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
-    plt.title("Frequency Spectrum")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 1000) 
-    plt.savefig('Spectrum (-1000) & Reference')
-    #plt.show()
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db, label="rec")
-    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="ref")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
-    plt.plot(smoothed_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
-    plt.title("Frequency Spectrum")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 200)  
-    plt.savefig('Spectrum (-200) & Reference')
-    #plt.show()
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
-    plt.title("Frequency Spectrum")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 1000)  
-    plt.savefig('Spectrum(-1000_diff')
-    plt.show()
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
-    plt.title("Frequency Spectrum")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 200)  
-    plt.savefig('Spectrum(-200_diff')
-    plt.show()
-
+# Ensure that PyAudio is terminated after execution
+def cleanup():
+    audio.terminate()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        cleanup()
