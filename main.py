@@ -10,6 +10,10 @@ import argparse
 import sys
 import time
 
+import influxdb_client, os, time
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
+
 today = date.today()
 current_date = today.strftime("%y%m%d")
 #print("Current date =", current_date)
@@ -246,6 +250,7 @@ def main():
     parser.add_argument('--duration', type=float, required= True, help="Specify duration of record in sec.")
     parser.add_argument('--split', action='store_true', help="If set, recording will be split into 0.5sec-parts")
     parser.add_argument('--continuous', action='store_true', help="If set, record in intervals for long durations.")
+    parser.add_argument('--pushtodb', action='store_true', help="If set, integral value is pushed to influxdb.")
     parser.add_argument('--total_time', type=float, required='--continuous' in sys.argv, help="Total time to record in hours.")
     parser.add_argument('--interval', type=float, required='--continuous' in sys.argv, help="Intervals between recordings in minutes.")
     args = parser.parse_args()
@@ -264,6 +269,14 @@ def main():
 
 
         if args.continuous:
+            if args.pushtodb:
+                token = os.environ.get("INFLUXDB_TOKEN")
+                org = "lhep"
+                url = "http://argoncube02.aec.unibe.ch:8086"
+                write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+                bucket="fsd_sc"
+                write_api = client.write_api(write_options=SYNCHRONOUS)
+            
             total_time_in_seconds = args.total_time * 3600
             interval_in_seconds = args.interval * 60
             start_time = time.time()
@@ -284,6 +297,13 @@ def main():
                 if os.path.exists(REFERENCE_FILENAME):
                     print(f"Comparing recording with reference file: {REFERENCE_FILENAME}")
                     integrated_value = plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME, continuous_mode=True)
+                    if args.pushtodb:
+                        point = (
+                            Point("vibmon")
+                            .tag("fq_range", "20_1000hz")
+                            .field("value", value)
+                        )
+                        write_api.write(bucket=bucket, org="lhep", record=point)
                     
 
                 elapsed_time = time.time() - start_time
