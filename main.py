@@ -29,8 +29,8 @@ REFERENCE_FILENAME = "reference.wav"
 audio = pyaudio.PyAudio()
 
 # Specify the name of the desired audio interface
-#SelectedInterface = 'USB Audio CODEC '  
-SelectedInterface = 'MacBook Pro-Mikrofon'
+SelectedInterface = 'USB Audio CODEC '  
+#SelectedInterface = 'MacBook Pro-Mikrofon'
 
 def get_device_index_by_name(device_name):
     p = pyaudio.PyAudio()
@@ -67,6 +67,8 @@ def Audio_fft(wav_file):
 
     # Convert magnitude to dB (adding a small constant to avoid log(0))
     positive_magnitude_db = 20 * np.log10(fft_magnitude + 1e-10)
+
+    
 
     return positive_frequencies, positive_magnitude_db
 
@@ -123,7 +125,25 @@ def split_audio(audio_data, sample_width, num_channels, part_duration, rate, bas
 
         print(f"Saved part {i + 1} as {part_filename}")
 
-def plot_fft_comparison(recorded_filename, reference_filename, window_size=17):
+def integrate_frequency_range(frequencies, magnitudes, freq_min, freq_max, is_db=False):
+   
+    # Select frequencies within the desired range
+    freq_mask = (frequencies >= freq_min) & (frequencies <= freq_max)
+
+    # Extract corresponding magnitudes
+    selected_frequencies = frequencies[freq_mask]
+    selected_magnitudes = magnitudes[freq_mask]
+
+    # If the magnitudes are in dB, convert them to linear scale for integration
+    if is_db:
+        selected_magnitudes = 10 ** (selected_magnitudes / 20)
+
+    # Integrate by summing magnitudes
+    integrated_value = np.sum(selected_magnitudes)
+
+    return integrated_value
+
+def plot_fft_comparison(recorded_filename, reference_filename, window_size=17, continuous_mode=False):
 
     #recorded
     positive_frequencies, positive_magnitude_db = Audio_fft(recorded_filename)
@@ -134,76 +154,90 @@ def plot_fft_comparison(recorded_filename, reference_filename, window_size=17):
     smoothed_frequencies, smoothed_magnitude_db = moving_average(positive_frequencies, positive_magnitude_db, window_size)
     smoothed_ref_frequencies, smoothed_ref_magnitude_db = moving_average(ref_positive_frequencies, ref_positive_magnitude_db, window_size)
 
-    #Plot1 whole spectrum
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
-    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
-    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
-    plt.title("Entire Frequency Spectrum (-20 khz)")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 20000)
-    plt.savefig(f"EntireSpectrum_{current_date}_{current_time}.png")
-    plt.show()
+    frequency_difference = positive_magnitude_db - ref_positive_magnitude_db
+    smoothed_difference = smoothed_magnitude_db - smoothed_ref_magnitude_db
 
-    #Plot2 Spectrum (-1000)
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
-    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
-    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
-    plt.title("Frequency Spectrum (-1 khz) ")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 1000)
-    plt.savefig(f"Spectrum1000_{current_date}_{current_time}.png")
-    plt.show()
+    freq_min = 20
+    freq_max = 1000
 
-     #Plot3 Spectrum (-200)
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
-    plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
-    plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
-    plt.title("Frequency Spectrum (-200hz) ")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 200)
-    plt.savefig(f"Spectrum200_{current_date}_{current_time}.png")
-    plt.show()
+    integrated_difference = integrate_frequency_range(positive_frequencies, frequency_difference, freq_min, freq_max, is_db=True)
 
-    #Plot4 Difference (-1000)
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
-    plt.title("Frequency Difference recorded - reference (-1000hz)")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 1000)  
-    plt.savefig('Difference(-1000).png')
-    plt.show()
+    print(f"Integrated frequency difference (recorded - reference) from {freq_min} Hz to {freq_max} Hz: {integrated_difference}")
 
-    #Plot5 Difference (-200)
-    plt.figure(figsize=(10, 6))
-    plt.plot(positive_frequencies, positive_magnitude_db-ref_positive_magnitude_db, label="diff")
-    plt.plot(smoothed_frequencies, smoothed_magnitude_db-smoothed_ref_magnitude_db, label="diff_smooth")
-    plt.title("Frequency Difference recorded - reference (-200hz)")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("DB")
-    plt.legend()
-    plt.grid()
-    plt.xlim(0, 200)  
-    plt.savefig('Difference(-200).png')
-    plt.show()
+    if not continuous_mode:
+        # Plot whole spectrum
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+        plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+        plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+        plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+        plt.title("Entire Frequency Spectrum (-20 kHz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("DB")
+        plt.legend()
+        plt.grid()
+        plt.xlim(0, 20000)
+        plt.savefig(f"EntireSpectrum_20000.png")
+        plt.show()
+
+        # Plot frequency spectrum between 0 Hz and 1000 Hz
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+        plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+        plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+        plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+        plt.title("Frequency Spectrum (-1 kHz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("DB")
+        plt.legend()
+        plt.grid()
+        plt.xlim(0, 1000)
+        plt.savefig(f"Spectrum1000.png")
+        plt.show()
+
+        # Plot frequency spectrum between 0 Hz and 200 Hz
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_frequencies, positive_magnitude_db, label="Recorded")
+        plt.plot(ref_positive_frequencies, ref_positive_magnitude_db, label="Reference")
+        plt.plot(smoothed_frequencies, smoothed_magnitude_db, label="Smoothed Recorded", linestyle='--')
+        plt.plot(smoothed_ref_frequencies, smoothed_ref_magnitude_db, label="Smoothed Reference", linestyle='--')
+        plt.title("Frequency Spectrum (-200 Hz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("DB")
+        plt.legend()
+        plt.grid()
+        plt.xlim(0, 200)
+        plt.savefig(f"Spectrum200.png")
+        plt.show()
+
+
+    if not continuous_mode:
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_frequencies, frequency_difference, label="Difference")
+        plt.plot(smoothed_frequencies, smoothed_difference, label="Smoothed Difference", linestyle='--')
+        plt.title("Frequency Difference: Recorded - Reference (-1 kHz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("DB")
+        plt.legend()
+        plt.grid()
+        plt.xlim(0, 1000)
+        plt.show()
+
+    # Plot frequency difference (-200 Hz)
+    if not continuous_mode:
+        plt.figure(figsize=(10, 6))
+        plt.plot(positive_frequencies, frequency_difference, label="Difference")
+        plt.plot(smoothed_frequencies, smoothed_difference, label="Smoothed Difference", linestyle='--')
+        plt.title("Frequency Difference: Recorded - Reference (-200 Hz)")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("DB")
+        plt.legend()
+        plt.grid()
+        plt.xlim(0, 200)
+        plt.show()
+
+    return integrated_difference
+   
     
 
 def main():
@@ -247,6 +281,10 @@ def main():
                 if args.split:
                     sample_width = audio.get_sample_size(FORMAT)
                     split_audio(audio_data, sample_width, CHANNELS, 0.5, RATE, OUTPUT_FILENAME)
+                if os.path.exists(REFERENCE_FILENAME):
+                    print(f"Comparing recording with reference file: {REFERENCE_FILENAME}")
+                    integrated_value = plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME, continuous_mode=True)
+                    
 
                 elapsed_time = time.time() - start_time
                 if elapsed_time < total_time_in_seconds:
@@ -273,7 +311,7 @@ def main():
 
     if os.path.exists(REFERENCE_FILENAME): 
         print(f"Comparing recording with reference file: {REFERENCE_FILENAME}")
-        plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME)
+        plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME, continuous_mode=True)
     else:
         print(f"Reference file {REFERENCE_FILENAME} not found. Skipping comparison.")
 
