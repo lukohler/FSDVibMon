@@ -33,7 +33,8 @@ REFERENCE_FILENAME = "reference.wav"
 audio = pyaudio.PyAudio()
 
 # Specify the name of the desired audio interface
-SelectedInterface = 'USB Audio CODEC '  
+#SelectedInterface = 'USB Audio CODEC '  
+SelectedInterface = 'USB Audio CODEC: - (hw:3,0)'  
 #SelectedInterface = 'MacBook Pro-Mikrofon'
 
 def get_device_index_by_name(device_name):
@@ -252,7 +253,7 @@ def main():
     parser.add_argument('--continuous', action='store_true', help="If set, record in intervals for long durations.")
     parser.add_argument('--pushtodb', action='store_true', help="If set, integral value is pushed to influxdb.")
     parser.add_argument('--total_time', type=float, required='--continuous' in sys.argv, help="Total time to record in hours.")
-    parser.add_argument('--interval', type=float, required='--continuous' in sys.argv, help="Intervals between recordings in minutes.")
+    parser.add_argument('--interval', type=float, required='--continuous' in sys.argv, help="Intervals between recordings in seconds.")
     args = parser.parse_args()
 
     now = datetime.now()
@@ -275,10 +276,10 @@ def main():
                 url = "http://argoncube02.aec.unibe.ch:8086"
                 write_client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
                 bucket="fsd_sc"
-                write_api = client.write_api(write_options=SYNCHRONOUS)
+                write_api = write_client.write_api(write_options=SYNCHRONOUS)
             
             total_time_in_seconds = args.total_time * 3600
-            interval_in_seconds = args.interval * 60
+            interval_in_seconds = args.interval
             start_time = time.time()
             elapsed_time = 0
 
@@ -301,7 +302,7 @@ def main():
                         point = (
                             Point("vibmon")
                             .tag("fq_range", "20_1000hz")
-                            .field("value", value)
+                            .field("value", integrated_value)
                         )
                         write_api.write(bucket=bucket, org="lhep", record=point)
                     
@@ -311,7 +312,7 @@ def main():
                     recording_duration = time.time() - start_record_time
                     wait_time = interval_in_seconds - recording_duration
                     if wait_time >0:
-                        print(f"Waiting for {args.interval} minutes before next recording.")
+                        print(f"Waiting for {args.interval} seconds before next recording.")
                         time.sleep(wait_time)
 
         else: 
