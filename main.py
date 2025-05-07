@@ -26,7 +26,7 @@ current_time = now.strftime("%H%M%S")
 FORMAT = pyaudio.paInt16  # 16-bit resolution
 CHANNELS = 1              # Choose number of Channels, 1 = mono, 2 seperate ones?
 RATE = 44100              # 44.1kHz sampling rate
-CHUNK = 1024              # 2^10 samples for buffer size
+CHUNK = 512              # 2^10 samples for buffer size
 REFERENCE_FILENAME = "reference.wav"
 
 # Initialize PyAudio
@@ -332,7 +332,7 @@ def main():
 
     if os.path.exists(REFERENCE_FILENAME): 
         print(f"Comparing recording with reference file: {REFERENCE_FILENAME}")
-        plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME, continuous_mode=True)
+        plot_fft_comparison(OUTPUT_FILENAME, REFERENCE_FILENAME, continuous_mode=args.continuous)
     else:
         print(f"Reference file {REFERENCE_FILENAME} not found. Skipping comparison.")
 
